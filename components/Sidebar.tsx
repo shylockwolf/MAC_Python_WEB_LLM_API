@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { ModelType, PaddleOCRConfig, OutputFormat } from '../types';
-import { Layers, Zap, Cpu, History, Settings, ExternalLink, Key, X, FileText, Code, Globe } from 'lucide-react';
+import { ModelType, PaddleOCRConfig, OutputFormat, ASRConfig } from '../types';
+import { Layers, Zap, Cpu, History, Settings, ExternalLink, Key, X, FileText, Code, Globe, Mic } from 'lucide-react';
 
 interface SidebarProps {
   selectedModel: ModelType;
@@ -12,17 +12,26 @@ interface SidebarProps {
   onPaddleOCRConfigChange: (config: PaddleOCRConfig) => void;
   outputFormat: OutputFormat;
   onOutputFormatChange: (format: OutputFormat) => void;
+  asrConfig: ASRConfig;
+  onAsrConfigChange: (config: ASRConfig) => void;
+  selectedLanguage: string;
+  onLanguageChange: (language: string) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ selectedModel, onSelectModel, temperature, onTemperatureChange, paddleOCRConfig, onPaddleOCRConfigChange, outputFormat, onOutputFormatChange }) => {
+const Sidebar: React.FC<SidebarProps> = ({ selectedModel, onSelectModel, temperature, onTemperatureChange, paddleOCRConfig, onPaddleOCRConfigChange, outputFormat, onOutputFormatChange, asrConfig, onAsrConfigChange, selectedLanguage, onLanguageChange }) => {
   const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
   const [tempApiKey, setTempApiKey] = useState(paddleOCRConfig.apiKey);
   const [tempApiUrl, setTempApiUrl] = useState(paddleOCRConfig.apiUrl);
+  const [showAsrConfigDialog, setShowAsrConfigDialog] = useState(false);
+  const [tempAsrApiKey, setTempAsrApiKey] = useState(asrConfig.apiKey);
+  const [tempAsrServer, setTempAsrServer] = useState(asrConfig.server);
+  const [tempAsrFunctionId, setTempAsrFunctionId] = useState(asrConfig.functionId);
 
   const models = [
     { type: ModelType.DEEPSEEK, icon: <Zap size={18} className="text-blue-400" />, desc: 'High speed & efficient' },
     { type: ModelType.KIMI_K25, icon: <Cpu size={18} className="text-emerald-400" />, desc: 'Complex reasoning & coding' },
     { type: ModelType.PADDLEOCR, icon: <Key size={18} className="text-orange-400" />, desc: 'OCR text recognition' },
+    { type: ModelType.NVIDIA_ASR, icon: <Mic size={18} className="text-purple-400" />, desc: 'Speech recognition' },
   ];
 
   const getDisplayName = (type: ModelType) => {
@@ -30,6 +39,7 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedModel, onSelectModel, tempera
       case ModelType.DEEPSEEK: return 'DeepSeek Chat';
       case ModelType.KIMI_K25: return 'Kimi K2.5';
       case ModelType.PADDLEOCR: return 'PaddleOCR';
+      case ModelType.NVIDIA_ASR: return 'NVIDIA ASR';
       default: return type;
     }
   };
@@ -46,6 +56,22 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedModel, onSelectModel, tempera
     setTempApiKey(paddleOCRConfig.apiKey);
     setTempApiUrl(paddleOCRConfig.apiUrl);
     setShowApiKeyDialog(false);
+  };
+
+  const handleSaveAsrConfig = () => {
+    onAsrConfigChange({
+      apiKey: tempAsrApiKey,
+      server: tempAsrServer,
+      functionId: tempAsrFunctionId
+    });
+    setShowAsrConfigDialog(false);
+  };
+
+  const handleCancelAsrConfig = () => {
+    setTempAsrApiKey(asrConfig.apiKey);
+    setTempAsrServer(asrConfig.server);
+    setTempAsrFunctionId(asrConfig.functionId);
+    setShowAsrConfigDialog(false);
   };
 
   return (
@@ -142,6 +168,26 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedModel, onSelectModel, tempera
               </div>
             )}
             
+            {selectedModel === ModelType.NVIDIA_ASR && (
+              <div className="space-y-2">
+                <label className="text-xs text-zinc-400">Language</label>
+                <select
+                  value={selectedLanguage}
+                  onChange={(e) => onLanguageChange(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="multi">Auto Detect</option>
+                  <option value="zh-CN">Chinese</option>
+                  <option value="en-US">English</option>
+                  <option value="ja-JP">Japanese</option>
+                  <option value="ko-KR">Korean</option>
+                  <option value="fr-FR">French</option>
+                  <option value="de-DE">German</option>
+                  <option value="es-ES">Spanish</option>
+                </select>
+              </div>
+            )}
+            
             <div className="space-y-2">
               <label className="text-xs text-zinc-400 flex justify-between">
                 Max Tokens <span>2048</span>
@@ -222,12 +268,79 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedModel, onSelectModel, tempera
         </div>
       )}
 
+      {showAsrConfigDialog && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-zinc-900 rounded-xl p-6 w-full max-w-md border border-zinc-700 shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-white">NVIDIA ASR Configuration</h3>
+              <button 
+                onClick={handleCancelAsrConfig}
+                className="text-zinc-400 hover:text-white transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">API Key</label>
+                <input
+                  type="password"
+                  value={tempAsrApiKey}
+                  onChange={(e) => setTempAsrApiKey(e.target.value)}
+                  placeholder="Enter your NVIDIA API key"
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Server</label>
+                <input
+                  type="text"
+                  value={tempAsrServer}
+                  onChange={(e) => setTempAsrServer(e.target.value)}
+                  placeholder="grpc.nvcf.nvidia.com:443"
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Function ID</label>
+                <input
+                  type="text"
+                  value={tempAsrFunctionId}
+                  onChange={(e) => setTempAsrFunctionId(e.target.value)}
+                  placeholder="b702f636-f60c-4a3d-a6f4-f3568c13bd7d"
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+              </div>
+              
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={handleCancelAsrConfig}
+                  className="flex-1 px-4 py-2 bg-zinc-700 text-white rounded-lg hover:bg-zinc-600 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveAsrConfig}
+                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-500 transition-colors"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="p-4 border-t border-zinc-900">
         <div className="bg-zinc-900/50 p-3 rounded-xl border border-zinc-800">
           <p className="text-[10px] text-zinc-500 mb-2">Connection Status</p>
           <div className="flex items-center gap-2 text-xs text-zinc-300">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            {selectedModel === ModelType.PADDLEOCR ? 'PaddleOCR API Ready' : 'LLM API Ready'}
+            {selectedModel === ModelType.PADDLEOCR ? 'PaddleOCR API Ready' : 
+             selectedModel === ModelType.NVIDIA_ASR ? 'NVIDIA ASR API Ready' : 'LLM API Ready'}
           </div>
         </div>
       </div>

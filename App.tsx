@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { ModelType, Message, DebugLog, FileInfo, PaddleOCRConfig, OutputFormat } from './types';
+import { ModelType, Message, DebugLog, FileInfo, PaddleOCRConfig, OutputFormat, ASRConfig } from './types';
 import Sidebar from './components/Sidebar';
 import ChatWindow from './components/ChatWindow';
 import DebugConsole from './components/DebugConsole';
@@ -14,6 +14,12 @@ const App: React.FC = () => {
     apiKey: '',
     apiUrl: 'http://localhost:3001/api/paddleocr/v1/ocr'
   });
+  const [asrConfig, setAsrConfig] = useState<ASRConfig>({
+    apiKey: '',
+    server: 'grpc.nvcf.nvidia.com:443',
+    functionId: 'b702f636-f60c-4a3d-a6f4-f3568c13bd7d'
+  });
+  const [selectedLanguage, setSelectedLanguage] = useState('multi');
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -57,7 +63,44 @@ const App: React.FC = () => {
       let responseText: string;
       let msgFormat: 'text' | 'json' | 'html' = 'text';
 
-      if (selectedModel === ModelType.PADDLEOCR) {
+      if (selectedModel === ModelType.NVIDIA_ASR) {
+        if (!files || files.length === 0) {
+          throw new Error('NVIDIA ASR requires at least one audio file');
+        }
+
+        const audioFile = files[0];
+        if (!audioFile.data || !audioFile.type.startsWith('audio/')) {
+          throw new Error('NVIDIA ASR only supports audio files');
+        }
+
+        addLog('request', `Send to ${selectedModel}`, {
+          file: audioFile.name,
+          type: audioFile.type,
+          size: audioFile.size,
+          language: selectedLanguage
+        });
+
+        const response = await fetch('http://localhost:3001/api/nvidia/v1/asr', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            file: audioFile.data,
+            language: selectedLanguage
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'NVIDIA ASR API request failed');
+        }
+
+        const data = await response.json();
+        responseText = data.text || 'No transcription detected';
+        
+        addLog('response', `Received from ${selectedModel}`, data);
+      } else if (selectedModel === ModelType.PADDLEOCR) {
         if (!files || files.length === 0) {
           throw new Error('PaddleOCR requires at least one image file');
         }
@@ -263,7 +306,7 @@ const App: React.FC = () => {
       };
       setMessages(prev => [...prev, errorMsg]);
     }
-  }, [selectedModel, addLog, outputFormat]);
+  }, [selectedModel, addLog, outputFormat, selectedLanguage, temperature, paddleOCRConfig, asrConfig]);
 
   return (
     <div className="flex h-screen w-full bg-[#09090b] text-zinc-100 overflow-hidden font-sans">
@@ -277,6 +320,10 @@ const App: React.FC = () => {
         onPaddleOCRConfigChange={setPaddleOCRConfig}
         outputFormat={outputFormat}
         onOutputFormatChange={setOutputFormat}
+        asrConfig={asrConfig}
+        onAsrConfigChange={setAsrConfig}
+        selectedLanguage={selectedLanguage}
+        onLanguageChange={setSelectedLanguage}
       />
 
       {/* Main Content Area */}
@@ -285,11 +332,14 @@ const App: React.FC = () => {
           <div className="flex items-center gap-3">
             <div className={`w-3 h-3 rounded-full ${
               selectedModel === ModelType.PADDLEOCR ? 'bg-orange-500 shadow-[0_0_10px_#f97316]' :
-              selectedModel === ModelType.KIMI_K25 ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' : 'bg-blue-500 shadow-[0_0_10px_#3b82f6]'
+              selectedModel === ModelType.KIMI_K25 ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' :
+              selectedModel === ModelType.NVIDIA_ASR ? 'bg-purple-500 shadow-[0_0_10px_#a855f7]' :
+              'bg-blue-500 shadow-[0_0_10px_#3b82f6]'
             }`} />
             <h1 className="font-semibold text-lg">
               {selectedModel === ModelType.PADDLEOCR ? 'PaddleOCR' : 
-               selectedModel === ModelType.DEEPSEEK ? 'DeepSeek' : 'Kimi K2.5'} Interface
+               selectedModel === ModelType.DEEPSEEK ? 'DeepSeek' : 
+               selectedModel === ModelType.NVIDIA_ASR ? 'NVIDIA ASR' : 'Kimi K2.5'} Interface
             </h1>
           </div>
           <div className="flex items-center gap-4">

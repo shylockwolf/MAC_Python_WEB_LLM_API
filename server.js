@@ -1,9 +1,16 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'fs';
 import { SocksProxyAgent } from 'socks-proxy-agent';
 import fetch from 'node-fetch';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import path from 'path';
+import * as grpc from '@grpc/grpc-js';
+import * as protoLoader from '@grpc/proto-loader';
+
+const execAsync = promisify(exec);
 
 dotenv.config();
 
@@ -173,10 +180,229 @@ app.post('/api/paddleocr/v1/ocr', async (req, res) => {
   }
 });
 
+app.post('/api/nvidia/v1/asr', async (req, res) => {
+  console.log('Received NVIDIA ASR request');
+  console.log('Request body keys:', Object.keys(req.body));
+  
+  let tempAudioPath = null;
+  let convertedAudioPath = null;
+  
+  try {
+    const { file, language = 'multi' } = req.body;
+    
+    if (!file) {
+      return res.status(400).json({ error: 'Audio file data is required' });
+    }
+    
+    // 获取NVIDIA API配置
+    const nvidiaApiKey = envVars.NVIDIA_API_KEY;
+    const nvidiaServer = envVars.NVIDIA_SERVER || 'grpc.nvcf.nvidia.com:443';
+    const nvidiaFunctionId = envVars.NVIDIA_FUNCTION_ID || 'b702f636-f60c-4a3d-a6f4-f3568c13bd7d';
+    
+    console.log('NVIDIA API Key:', nvidiaApiKey ? 'loaded' : 'not loaded');
+    console.log('NVIDIA Server:', nvidiaServer);
+    console.log('NVIDIA Function ID:', nvidiaFunctionId);
+    
+    if (!nvidiaApiKey) {
+      return res.status(401).json({ error: 'NVIDIA API key is required' });
+    }
+    
+    // 将base64音频数据保存为临时文件
+    const buffer = Buffer.from(file, 'base64');
+    // Save without extension first, or use a generic one. ffmpeg can usually detect format.
+    // However, some formats require extension. Let's try to detect or just always convert.
+    // For robustness, we'll save as .dat and let ffmpeg probe it.
+    tempAudioPath = path.join(process.cwd(), `temp_audio_${Date.now()}.dat`);
+    writeFileSync(tempAudioPath, buffer);
+    console.log('Saved audio to temp file:', tempAudioPath);
+    console.log('Audio file size:', buffer.length / 1024 / 1024, 'MB');
+    
+    // Always convert to ensure correct format (16kHz, mono, WAV) for Riva
+    try {
+      convertedAudioPath = path.join(process.cwd(), `temp_audio_converted_${Date.now()}.wav`);
+      
+      console.log('Converting audio with ffmpeg...');
+      // ffmpeg is smart enough to detect input format from file content
+      await execAsync(`ffmpeg -i "${tempAudioPath}" -ar 16000 -ac 1 -y "${convertedAudioPath}"`, {
+        timeout: 300000 // 5分钟超时
+      });
+      
+      console.log('Audio conversion successful');
+      // Update tempAudioPath to point to the converted file for reading
+      // We keep the original tempAudioPath for cleanup if needed (though we should clean both)
+      // For now, let's just update the variable to read from
+      const originalTempPath = tempAudioPath;
+      tempAudioPath = convertedAudioPath;
+      
+      // Clean up the original uploaded file immediately
+      try {
+        if (existsSync(originalTempPath)) unlinkSync(originalTempPath);
+      } catch (e) {
+        console.error('Error deleting temp file:', e);
+      }
+      
+    } catch (ffmpegError) {
+      console.error('ffmpeg conversion failed:', ffmpegError);
+      // Clean up temp file
+      try {
+        if (existsSync(tempAudioPath)) unlinkSync(tempAudioPath);
+      } catch (e) {}
+      
+      return res.status(400).json({ 
+        error: 'Audio conversion failed. Please ensure ffmpeg is installed and the audio format is supported.',
+        details: ffmpegError.message
+      });
+    }
+    
+    // 调用NVIDIA ASR API
+    console.log('Calling NVIDIA ASR API via gRPC...');
+    
+    // 读取音频文件
+    const audioBuffer = readFileSync(tempAudioPath);
+    
+    // 使用gRPC连接到NVIDIA Riva服务
+    const packageDefinition = protoLoader.loadSync('./proto/riva_asr.proto', {
+      keepCase: true,
+      longs: String,
+      enums: String,
+      defaults: true,
+      oneofs: true
+    });
+    
+    const rivaProto = grpc.loadPackageDefinition(packageDefinition);
+    
+    // 创建gRPC客户端
+    const client = new rivaProto.nvidia.riva.asr.RivaSpeechRecognition(
+      nvidiaServer,
+      grpc.credentials.createSsl(),
+      {
+        'grpc.ssl_target_name_override': 'grpc.nvcf.nvidia.com',
+        'grpc.default_authority': 'grpc.nvcf.nvidia.com'
+      }
+    );
+    
+    // 构建识别配置
+    const config = {
+      language_code: language,
+      max_alternatives: 1,
+      enable_automatic_punctuation: true,
+      enable_word_time_offsets: true,
+      profanity_filter: false,
+      encoding: 1, // LINEAR_PCM
+      sample_rate_hertz: 16000
+    };
+    
+    // 构建请求
+    const request = {
+      config: config,
+      audio: audioBuffer
+    };
+    
+    // 使用metadata传递认证信息
+    const metadata = new grpc.Metadata();
+    metadata.add('function-id', nvidiaFunctionId);
+    metadata.add('authorization', `Bearer ${nvidiaApiKey}`);
+    
+    // 调用离线识别
+    client.recognize(request, metadata, (error, response) => {
+      if (error) {
+        console.error('gRPC error:', error);
+        return res.status(500).json({ 
+          error: 'NVIDIA ASR API request failed',
+          details: error.message
+        });
+      }
+      
+      console.log('NVIDIA ASR response received');
+      
+      // 处理转录结果
+      let transcriptText = '';
+      const sentences = [];
+      
+      if (response.results && response.results.length > 0) {
+        for (const result of response.results) {
+          if (result.alternatives && result.alternatives.length > 0) {
+            const transcript = result.alternatives[0].transcript;
+            if (transcript) {
+              transcriptText += transcript;
+              
+              // 按句子分割
+              const sentenceMatches = transcript.match(/[^.!?。！？，；；、]+[.!?。！？，；；、]*/g);
+              if (sentenceMatches) {
+                for (const sentence of sentenceMatches) {
+                  const trimmed = sentence.trim();
+                  if (trimmed) {
+                    sentences.push(trimmed);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      // 如果没有句子分割，使用整个文本
+      if (sentences.length === 0 && transcriptText) {
+        sentences.push(transcriptText);
+      }
+      
+      // 确保每个句子都有标点符号
+      const finalSentences = sentences.map(sentence => {
+        if (!/[.!?。！？，；；、]$/.test(sentence)) {
+          return sentence + '。';
+        }
+        return sentence;
+      });
+      
+      const finalText = finalSentences.join('\n');
+      
+      console.log('Final transcript:', finalText);
+      
+      res.json({
+        text: finalText,
+        sentences: finalSentences,
+        debug: {
+          language: language,
+          audioSize: buffer.length,
+          conversion: convertedAudioPath ? 'converted to WAV' : 'no conversion needed'
+        }
+      });
+    });
+    
+  } catch (error) {
+    console.error('NVIDIA ASR API error:', error);
+    res.status(500).json({ 
+      error: error.message,
+      type: error.type,
+      code: error.code 
+    });
+  } finally {
+    // 清理临时文件
+    if (tempAudioPath && existsSync(tempAudioPath)) {
+      try {
+        unlinkSync(tempAudioPath);
+        console.log('Cleaned up temp file:', tempAudioPath);
+      } catch (cleanupError) {
+        console.error('Failed to clean up temp file:', cleanupError);
+      }
+    }
+    
+    if (convertedAudioPath && existsSync(convertedAudioPath)) {
+      try {
+        unlinkSync(convertedAudioPath);
+        console.log('Cleaned up converted file:', convertedAudioPath);
+      } catch (cleanupError) {
+        console.error('Failed to clean up converted file:', cleanupError);
+      }
+    }
+  }
+});
+
 const PORT = 3001;
 app.listen(PORT, () => {
   console.log(`Proxy server running on http://localhost:${PORT}`);
   console.log(`SOCKS5 Proxy: ${socksProxyUrl}`);
   console.log(`DEEPSEEK_API_KEY: ${envVars.DEEPSEEK_API_KEY ? 'loaded' : 'not loaded'}`);
   console.log(`KIMI_API_KEY: ${envVars.KIMI_API_KEY ? 'loaded' : 'not loaded'}`);
+  console.log(`NVIDIA_API_KEY: ${envVars.NVIDIA_API_KEY ? 'loaded' : 'not loaded'}`);
 });

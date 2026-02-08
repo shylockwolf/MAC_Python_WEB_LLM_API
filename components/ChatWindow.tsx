@@ -20,6 +20,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSend, selectedModel
       case ModelType.DEEPSEEK: return 'DeepSeek';
       case ModelType.KIMI_K25: return 'Kimi K2.5';
       case ModelType.PADDLEOCR: return 'PaddleOCR';
+      case ModelType.NVIDIA_ASR: return 'NVIDIA ASR';
       default: return 'LLM';
     }
   };
@@ -27,6 +28,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSend, selectedModel
   const getPlaceholder = () => {
     switch(selectedModel) {
       case ModelType.PADDLEOCR: return '上传图片进行OCR识别...';
+      case ModelType.NVIDIA_ASR: return '上传音频文件进行语音识别...';
       default: return `向 ${getModelDisplayName()} 提问...`;
     }
   };
@@ -171,6 +173,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSend, selectedModel
               className="hidden" 
               ref={fileInputRef} 
               onChange={handleFileChange}
+              accept={selectedModel === ModelType.NVIDIA_ASR ? 'audio/*' : selectedModel === ModelType.PADDLEOCR ? 'image/*' : 'image/*,audio/*'}
             />
             
             <textarea
@@ -205,7 +208,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSend, selectedModel
                <span className="flex items-center gap-1">Shift + Enter 换行</span>
             </div>
             <span className="text-[10px] text-zinc-600">
-              Gemini API Optimized
+              My API Optimized
             </span>
           </div>
         </div>

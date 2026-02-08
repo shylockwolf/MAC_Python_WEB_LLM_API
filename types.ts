@@ -3,6 +3,7 @@ export enum ModelType {
   DEEPSEEK = 'deepseek-chat',
   KIMI_K25 = 'kimi-k2.5',
   PADDLEOCR = 'paddleocr',
+  NVIDIA_ASR = 'nvidia-asr',
 }
 
 export enum OutputFormat {
@@ -46,4 +47,21 @@ export interface OCRResult {
 export interface PaddleOCRConfig {
   apiKey: string;
   apiUrl: string;
+}
+
+export interface ASRConfig {
+  apiKey: string;
+  server: string;
+  functionId: string;
+}
+
+export interface ASRRequest {
+  file: string; // Base64 encoded audio data
+  language: string; // Language code (e.g., 'zh-CN', 'en-US', 'multi')
+}
+
+export interface ASRResponse {
+  text: string;
+  sentences?: string[];
+  debug?: string;
 }
