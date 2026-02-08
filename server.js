@@ -5,9 +5,9 @@ import { readFileSync } from 'fs';
 import { SocksProxyAgent } from 'socks-proxy-agent';
 import fetch from 'node-fetch';
 
-dotenv.config({ path: '.env.local' });
+dotenv.config();
 
-const envContent = readFileSync('.env.local', 'utf8');
+const envContent = readFileSync('.env', 'utf8');
 const envVars = {};
 envContent.split('\n').forEach(line => {
   const [key, ...values] = line.split('=');
