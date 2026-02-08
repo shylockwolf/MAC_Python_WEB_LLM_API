@@ -1,0 +1,9 @@
+
+{
+  "name": "OmniLLM Unified Hub",
+  "description": "A professional developer-oriented dashboard for unified LLM API interaction, featuring DeepSeek and KIMI 2.5 integration with a real-time debugging console.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
