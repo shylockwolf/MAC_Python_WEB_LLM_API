@@ -398,6 +398,166 @@ app.post('/api/nvidia/v1/asr', async (req, res) => {
   }
 });
 
+app.post('/api/nvidia/v1/tts', async (req, res) => {
+  console.log('Received NVIDIA TTS request');
+  console.log('Request body keys:', Object.keys(req.body));
+  
+  try {
+    const { text, voice = 'Magpie-Multilingual.EN-US.Aria', language = 'en-US' } = req.body;
+    
+    if (!text) {
+      return res.status(400).json({ error: 'Text is required' });
+    }
+    
+    // 获取NVIDIA API配置
+    const nvidiaApiKey = envVars.NVIDIA_API_KEY;
+    const nvidiaServer = envVars.NVIDIA_SERVER || 'grpc.nvcf.nvidia.com:443';
+    // Use TTS specific function ID if available, otherwise default to the one from App.tsx or env
+    const nvidiaFunctionId = envVars.NVIDIA_TTS_FUNCTION_ID || '877104f7-e885-42b9-8de8-f6e4c6303969';
+    
+    console.log('NVIDIA API Key:', nvidiaApiKey ? 'loaded' : 'not loaded');
+    console.log('NVIDIA Server:', nvidiaServer);
+    console.log('NVIDIA Function ID:', nvidiaFunctionId);
+    
+    if (!nvidiaApiKey) {
+      return res.status(401).json({ error: 'NVIDIA API key is required' });
+    }
+    
+    // 调用NVIDIA TTS API
+    console.log('Calling NVIDIA TTS API via gRPC...');
+    
+    // 使用gRPC连接到NVIDIA Riva服务
+    const packageDefinition = protoLoader.loadSync('./proto/riva_tts.proto', {
+      keepCase: true,
+      longs: String,
+      enums: String,
+      defaults: true,
+      oneofs: true,
+      includeDirs: ['./proto'] // Ensure it can find riva_audio.proto
+    });
+    
+    const rivaProto = grpc.loadPackageDefinition(packageDefinition);
+    
+    // 创建gRPC客户端
+    const client = new rivaProto.nvidia.riva.tts.RivaSpeechSynthesis(
+      nvidiaServer,
+      grpc.credentials.createSsl(),
+      {
+        'grpc.ssl_target_name_override': 'grpc.nvcf.nvidia.com',
+        'grpc.default_authority': 'grpc.nvcf.nvidia.com'
+      }
+    );
+    
+    // Helper function to detect if text contains Chinese characters
+    const isChinese = (text) => {
+      let chineseChars = 0;
+      for (let i = 0; i < text.length; i++) {
+        const charCode = text.charCodeAt(i);
+        if (charCode >= 0x4e00 && charCode <= 0x9fff) {
+          chineseChars++;
+        }
+      }
+      return chineseChars > text.length * 0.2;
+    };
+    
+    // Auto-detect language if not specified or default 'en-US'
+    let languageCode = language;
+    if (languageCode === 'en-US' || !languageCode) {
+        if (isChinese(text)) {
+            languageCode = 'zh-CN';
+            console.log('Detected Chinese language from text');
+        } else {
+            languageCode = 'en-US';
+        }
+    }
+    
+    // 构建请求
+    const request = {
+      text: text,
+      language_code: languageCode,
+      encoding: 1, // LINEAR_PCM
+      sample_rate_hz: 22050, // Match tts_app.py sample rate
+      voice_name: voice
+    };
+    
+    console.log('TTS Request:', JSON.stringify(request));
+    
+    // 使用metadata传递认证信息
+    const metadata = new grpc.Metadata();
+    metadata.add('function-id', nvidiaFunctionId);
+    metadata.add('authorization', `Bearer ${nvidiaApiKey}`);
+    
+    // Helper to add WAV header
+    const addWavHeader = (samples, sampleRate, numChannels, bitsPerSample) => {
+      const buffer = Buffer.alloc(44 + samples.length);
+      
+      // RIFF chunk descriptor
+      buffer.write('RIFF', 0);
+      buffer.writeUInt32LE(36 + samples.length, 4);
+      buffer.write('WAVE', 8);
+      
+      // fmt sub-chunk
+      buffer.write('fmt ', 12);
+      buffer.writeUInt32LE(16, 16); // Subchunk1Size
+      buffer.writeUInt16LE(1, 20); // AudioFormat (1 = PCM)
+      buffer.writeUInt16LE(numChannels, 22);
+      buffer.writeUInt32LE(sampleRate, 24);
+      buffer.writeUInt32LE(sampleRate * numChannels * (bitsPerSample / 8), 28); // ByteRate
+      buffer.writeUInt16LE(numChannels * (bitsPerSample / 8), 32); // BlockAlign
+      buffer.writeUInt16LE(bitsPerSample, 34);
+      
+      // data sub-chunk
+      buffer.write('data', 36);
+      buffer.writeUInt32LE(samples.length, 40);
+      
+      samples.copy(buffer, 44);
+      return buffer;
+    };
+
+    // 调用合成
+    client.Synthesize(request, metadata, (error, response) => {
+      if (error) {
+        console.error('gRPC error:', error);
+        return res.status(500).json({ 
+          error: 'NVIDIA TTS API request failed',
+          details: error.message
+        });
+      }
+      
+      console.log('NVIDIA TTS response received');
+      
+      if (response && response.audio) {
+        // Add WAV header to raw PCM data
+        // Riva typically returns 16-bit PCM (2 bytes per sample)
+        const wavBuffer = addWavHeader(response.audio, 22050, 1, 16);
+        
+        // Convert buffer to base64
+        const audioBase64 = wavBuffer.toString('base64');
+        
+        res.json({
+          audio: audioBase64,
+          debug: {
+            voice: voice,
+            sampleRate: 22050,
+            encoding: 'LINEAR_PCM',
+            addedWavHeader: true
+          }
+        });
+      } else {
+        res.status(500).json({ error: 'No audio data received' });
+      }
+    });
+    
+  } catch (error) {
+    console.error('NVIDIA TTS API error:', error);
+    res.status(500).json({ 
+      error: error.message,
+      type: error.type,
+      code: error.code 
+    });
+  }
+});
+
 const PORT = 3001;
 app.listen(PORT, () => {
   console.log(`Proxy server running on http://localhost:${PORT}`);

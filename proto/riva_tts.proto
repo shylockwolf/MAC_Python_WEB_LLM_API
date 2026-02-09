@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package nvidia.riva.tts;
+
+import "riva_audio.proto";
+
+service RivaSpeechSynthesis {
+  rpc Synthesize (SynthesizeSpeechRequest) returns (SynthesizeSpeechResponse) {}
+}
+
+message SynthesizeSpeechRequest {
+  string text = 1;
+  string language_code = 2;
+  nvidia.riva.AudioEncoding encoding = 3;
+  int32 sample_rate_hz = 4;
+  string voice_name = 5;
+}
+
+message SynthesizeSpeechResponse {
+  bytes audio = 1;
+}

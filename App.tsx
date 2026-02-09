@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { ModelType, Message, DebugLog, FileInfo, PaddleOCRConfig, OutputFormat, ASRConfig } from './types';
+import { ModelType, Message, DebugLog, FileInfo, PaddleOCRConfig, OutputFormat, ASRConfig, TTSConfig } from './types';
 import Sidebar from './components/Sidebar';
 import ChatWindow from './components/ChatWindow';
 import DebugConsole from './components/DebugConsole';
@@ -19,7 +19,13 @@ const App: React.FC = () => {
     server: 'grpc.nvcf.nvidia.com:443',
     functionId: 'b702f636-f60c-4a3d-a6f4-f3568c13bd7d'
   });
+  const [ttsConfig, setTtsConfig] = useState<TTSConfig>({
+    apiKey: '',
+    server: 'grpc.nvcf.nvidia.com:443',
+    functionId: '877104f7-e885-42b9-8de8-f6e4c6303969'
+  });
   const [selectedLanguage, setSelectedLanguage] = useState('multi');
+  const [selectedVoice, setSelectedVoice] = useState('Magpie-Multilingual.EN-US.Aria');
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -100,6 +106,76 @@ const App: React.FC = () => {
         responseText = data.text || 'No transcription detected';
         
         addLog('response', `Received from ${selectedModel}`, data);
+      } else if (selectedModel === ModelType.NVIDIA_TTS) {
+        let textToSynthesize = content;
+        
+        // Handle text file upload
+        if (files && files.length > 0) {
+          const textFile = files.find(f => f.type === 'text/plain' || f.name.toLowerCase().endsWith('.txt'));
+          if (textFile && textFile.data) {
+            try {
+              // Decode base64 content with UTF-8 support
+              const binaryString = atob(textFile.data);
+              const bytes = Uint8Array.from(binaryString, (c) => c.charCodeAt(0));
+              const decodedText = new TextDecoder().decode(bytes);
+              
+              // If there's already content, append the file content
+              if (textToSynthesize) {
+                textToSynthesize += '\n' + decodedText;
+              } else {
+                textToSynthesize = decodedText;
+              }
+              
+              addLog('info', 'Processed Text File', {
+                filename: textFile.name,
+                size: textFile.size,
+                preview: decodedText.substring(0, 100) + '...'
+              });
+            } catch (e) {
+              console.error('Failed to decode text file:', e);
+              addLog('error', 'File Decode Error', { error: String(e) });
+            }
+          }
+        }
+
+        if (!textToSynthesize) {
+          throw new Error('NVIDIA TTS requires text input or a text file');
+        }
+
+        addLog('request', `Send to ${selectedModel}`, {
+          text: textToSynthesize,
+          voice: selectedVoice
+        });
+
+        const response = await fetch('http://localhost:3001/api/nvidia/v1/tts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            text: textToSynthesize,
+            voice: selectedVoice
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'NVIDIA TTS API request failed');
+        }
+
+        const data = await response.json();
+        
+        if (data.audio) {
+            responseText = `<div class="flex flex-col gap-2">
+                <p>Generated Audio:</p>
+                <audio controls src="data:audio/wav;base64,${data.audio}" style="width: 100%;"></audio>
+            </div>`;
+            msgFormat = 'html';
+        } else {
+            responseText = 'No audio generated';
+        }
+        
+        addLog('response', `Received from ${selectedModel}`, { ...data, audio: '(base64 audio data)' });
       } else if (selectedModel === ModelType.PADDLEOCR) {
         if (!files || files.length === 0) {
           throw new Error('PaddleOCR requires at least one image file');
@@ -306,7 +382,7 @@ const App: React.FC = () => {
       };
       setMessages(prev => [...prev, errorMsg]);
     }
-  }, [selectedModel, addLog, outputFormat, selectedLanguage, temperature, paddleOCRConfig, asrConfig]);
+  }, [selectedModel, addLog, outputFormat, selectedLanguage, selectedVoice, temperature, paddleOCRConfig, asrConfig, ttsConfig]);
 
   return (
     <div className="flex h-screen w-full bg-[#09090b] text-zinc-100 overflow-hidden font-sans">
@@ -322,8 +398,12 @@ const App: React.FC = () => {
         onOutputFormatChange={setOutputFormat}
         asrConfig={asrConfig}
         onAsrConfigChange={setAsrConfig}
+        ttsConfig={ttsConfig}
+        onTtsConfigChange={setTtsConfig}
         selectedLanguage={selectedLanguage}
         onLanguageChange={setSelectedLanguage}
+        selectedVoice={selectedVoice}
+        onVoiceChange={setSelectedVoice}
       />
 
       {/* Main Content Area */}

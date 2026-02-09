@@ -21,6 +21,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSend, selectedModel
       case ModelType.KIMI_K25: return 'Kimi K2.5';
       case ModelType.PADDLEOCR: return 'PaddleOCR';
       case ModelType.NVIDIA_ASR: return 'NVIDIA ASR';
+      case ModelType.NVIDIA_TTS: return 'NVIDIA TTS';
       default: return 'LLM';
     }
   };
@@ -29,6 +30,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSend, selectedModel
     switch(selectedModel) {
       case ModelType.PADDLEOCR: return '上传图片进行OCR识别...';
       case ModelType.NVIDIA_ASR: return '上传音频文件进行语音识别...';
+      case ModelType.NVIDIA_TTS: return '输入文本进行语音合成...';
       default: return `向 ${getModelDisplayName()} 提问...`;
     }
   };
@@ -173,7 +175,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ messages, onSend, selectedModel
               className="hidden" 
               ref={fileInputRef} 
               onChange={handleFileChange}
-              accept={selectedModel === ModelType.NVIDIA_ASR ? 'audio/*' : selectedModel === ModelType.PADDLEOCR ? 'image/*' : 'image/*,audio/*'}
+              accept={selectedModel === ModelType.NVIDIA_ASR ? 'audio/*' : selectedModel === ModelType.PADDLEOCR ? 'image/*' : selectedModel === ModelType.NVIDIA_TTS ? '.txt,text/*' : 'image/*,audio/*'}
             />
             
             <textarea

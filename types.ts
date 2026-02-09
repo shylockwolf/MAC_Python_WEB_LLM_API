@@ -4,6 +4,7 @@ export enum ModelType {
   KIMI_K25 = 'kimi-k2.5',
   PADDLEOCR = 'paddleocr',
   NVIDIA_ASR = 'nvidia-asr',
+  NVIDIA_TTS = 'nvidia-tts',
 }
 
 export enum OutputFormat {
@@ -55,13 +56,30 @@ export interface ASRConfig {
   functionId: string;
 }
 
+export interface TTSConfig {
+  apiKey: string;
+  server: string;
+  functionId: string;
+}
+
 export interface ASRRequest {
   file: string; // Base64 encoded audio data
   language: string; // Language code (e.g., 'zh-CN', 'en-US', 'multi')
 }
 
+export interface TTSRequest {
+  text: string;
+  language: string;
+  voice: string;
+}
+
 export interface ASRResponse {
   text: string;
   sentences?: string[];
+  debug?: string;
+}
+
+export interface TTSResponse {
+  audio: string; // Base64 encoded audio data
   debug?: string;
 }

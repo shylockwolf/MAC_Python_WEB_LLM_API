@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { ModelType, PaddleOCRConfig, OutputFormat, ASRConfig } from '../types';
-import { Layers, Zap, Cpu, History, Settings, ExternalLink, Key, X, FileText, Code, Globe, Mic } from 'lucide-react';
+import { ModelType, PaddleOCRConfig, OutputFormat, ASRConfig, TTSConfig } from '../types';
+import { Layers, Zap, Cpu, History, Settings, ExternalLink, Key, X, FileText, Code, Globe, Mic, Volume2 } from 'lucide-react';
 
 interface SidebarProps {
   selectedModel: ModelType;
@@ -14,11 +14,20 @@ interface SidebarProps {
   onOutputFormatChange: (format: OutputFormat) => void;
   asrConfig: ASRConfig;
   onAsrConfigChange: (config: ASRConfig) => void;
+  ttsConfig: TTSConfig;
+  onTtsConfigChange: (config: TTSConfig) => void;
   selectedLanguage: string;
   onLanguageChange: (language: string) => void;
+  selectedVoice: string;
+  onVoiceChange: (voice: string) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ selectedModel, onSelectModel, temperature, onTemperatureChange, paddleOCRConfig, onPaddleOCRConfigChange, outputFormat, onOutputFormatChange, asrConfig, onAsrConfigChange, selectedLanguage, onLanguageChange }) => {
+const Sidebar: React.FC<SidebarProps> = ({ 
+  selectedModel, onSelectModel, temperature, onTemperatureChange, 
+  paddleOCRConfig, onPaddleOCRConfigChange, outputFormat, onOutputFormatChange, 
+  asrConfig, onAsrConfigChange, ttsConfig, onTtsConfigChange,
+  selectedLanguage, onLanguageChange, selectedVoice, onVoiceChange 
+}) => {
   const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
   const [tempApiKey, setTempApiKey] = useState(paddleOCRConfig.apiKey);
   const [tempApiUrl, setTempApiUrl] = useState(paddleOCRConfig.apiUrl);
@@ -26,12 +35,17 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedModel, onSelectModel, tempera
   const [tempAsrApiKey, setTempAsrApiKey] = useState(asrConfig.apiKey);
   const [tempAsrServer, setTempAsrServer] = useState(asrConfig.server);
   const [tempAsrFunctionId, setTempAsrFunctionId] = useState(asrConfig.functionId);
+  const [showTtsConfigDialog, setShowTtsConfigDialog] = useState(false);
+  const [tempTtsApiKey, setTempTtsApiKey] = useState(ttsConfig.apiKey);
+  const [tempTtsServer, setTempTtsServer] = useState(ttsConfig.server);
+  const [tempTtsFunctionId, setTempTtsFunctionId] = useState(ttsConfig.functionId);
 
   const models = [
     { type: ModelType.DEEPSEEK, icon: <Zap size={18} className="text-blue-400" />, desc: 'High speed & efficient' },
     { type: ModelType.KIMI_K25, icon: <Cpu size={18} className="text-emerald-400" />, desc: 'Complex reasoning & coding' },
     { type: ModelType.PADDLEOCR, icon: <Key size={18} className="text-orange-400" />, desc: 'OCR text recognition' },
     { type: ModelType.NVIDIA_ASR, icon: <Mic size={18} className="text-purple-400" />, desc: 'Speech recognition' },
+    { type: ModelType.NVIDIA_TTS, icon: <Volume2 size={18} className="text-pink-400" />, desc: 'Text to Speech' },
   ];
 
   const getDisplayName = (type: ModelType) => {
@@ -40,6 +54,7 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedModel, onSelectModel, tempera
       case ModelType.KIMI_K25: return 'Kimi K2.5';
       case ModelType.PADDLEOCR: return 'PaddleOCR';
       case ModelType.NVIDIA_ASR: return 'NVIDIA ASR';
+      case ModelType.NVIDIA_TTS: return 'NVIDIA TTS';
       default: return type;
     }
   };
@@ -72,6 +87,22 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedModel, onSelectModel, tempera
     setTempAsrServer(asrConfig.server);
     setTempAsrFunctionId(asrConfig.functionId);
     setShowAsrConfigDialog(false);
+  };
+
+  const handleSaveTtsConfig = () => {
+    onTtsConfigChange({
+      apiKey: tempTtsApiKey,
+      server: tempTtsServer,
+      functionId: tempTtsFunctionId
+    });
+    setShowTtsConfigDialog(false);
+  };
+
+  const handleCancelTtsConfig = () => {
+    setTempTtsApiKey(ttsConfig.apiKey);
+    setTempTtsServer(ttsConfig.server);
+    setTempTtsFunctionId(ttsConfig.functionId);
+    setShowTtsConfigDialog(false);
   };
 
   return (
@@ -187,6 +218,27 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedModel, onSelectModel, tempera
                 </select>
               </div>
             )}
+
+            {selectedModel === ModelType.NVIDIA_TTS && (
+              <div className="space-y-2">
+                <label className="text-xs text-zinc-400">Voice</label>
+                <select
+                  value={selectedVoice}
+                  onChange={(e) => onVoiceChange(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="Magpie-Multilingual.EN-US.Aria">Aria (EN-US)</option>
+                  <option value="Magpie-Multilingual.EN-US.Jason">Jason (EN-US)</option>
+                  <option value="Magpie-Multilingual.EN-US.Leo">Leo (EN-US)</option>
+                  <option value="Magpie-Multilingual.EN-US.Sofia">Sofia (EN-US)</option>
+                  <option value="Magpie-Multilingual.EN-US.Mia">Mia (EN-US)</option>
+                  <option value="Magpie-Multilingual.EN-US.Aria.Neutral">Aria Neutral</option>
+                  <option value="Magpie-Multilingual.EN-US.Aria.Happy">Aria Happy</option>
+                  <option value="Magpie-Multilingual.EN-US.Aria.Sad">Aria Sad</option>
+                  <option value="Magpie-Multilingual.EN-US.Aria.Calm">Aria Calm</option>
+                </select>
+              </div>
+            )}
             
             <div className="space-y-2">
               <label className="text-xs text-zinc-400 flex justify-between">
@@ -204,7 +256,11 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedModel, onSelectModel, tempera
               <History size={16} /> Conversation History
             </button>
             <button 
-              onClick={() => setShowApiKeyDialog(true)}
+              onClick={() => {
+                if (selectedModel === ModelType.PADDLEOCR) setShowApiKeyDialog(true);
+                else if (selectedModel === ModelType.NVIDIA_ASR) setShowAsrConfigDialog(true);
+                else if (selectedModel === ModelType.NVIDIA_TTS) setShowTtsConfigDialog(true);
+              }}
               className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-lg transition-colors"
             >
               <Key size={16} /> API Key Management
@@ -334,13 +390,80 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedModel, onSelectModel, tempera
         </div>
       )}
 
+      {showTtsConfigDialog && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-zinc-900 rounded-xl p-6 w-full max-w-md border border-zinc-700 shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-white">NVIDIA TTS Configuration</h3>
+              <button 
+                onClick={handleCancelTtsConfig}
+                className="text-zinc-400 hover:text-white transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">API Key</label>
+                <input
+                  type="password"
+                  value={tempTtsApiKey}
+                  onChange={(e) => setTempTtsApiKey(e.target.value)}
+                  placeholder="Enter your NVIDIA API key"
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Server</label>
+                <input
+                  type="text"
+                  value={tempTtsServer}
+                  onChange={(e) => setTempTtsServer(e.target.value)}
+                  placeholder="grpc.nvcf.nvidia.com:443"
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Function ID</label>
+                <input
+                  type="text"
+                  value={tempTtsFunctionId}
+                  onChange={(e) => setTempTtsFunctionId(e.target.value)}
+                  placeholder="877104f7-e885-42b9-8de8-f6e4c6303969"
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+              </div>
+              
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={handleCancelTtsConfig}
+                  className="flex-1 px-4 py-2 bg-zinc-700 text-white rounded-lg hover:bg-zinc-600 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveTtsConfig}
+                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-500 transition-colors"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="p-4 border-t border-zinc-900">
         <div className="bg-zinc-900/50 p-3 rounded-xl border border-zinc-800">
           <p className="text-[10px] text-zinc-500 mb-2">Connection Status</p>
           <div className="flex items-center gap-2 text-xs text-zinc-300">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             {selectedModel === ModelType.PADDLEOCR ? 'PaddleOCR API Ready' : 
-             selectedModel === ModelType.NVIDIA_ASR ? 'NVIDIA ASR API Ready' : 'LLM API Ready'}
+             selectedModel === ModelType.NVIDIA_ASR ? 'NVIDIA ASR API Ready' : 
+             selectedModel === ModelType.NVIDIA_TTS ? 'NVIDIA TTS API Ready' : 'LLM API Ready'}
           </div>
         </div>
       </div>
